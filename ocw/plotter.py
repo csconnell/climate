@@ -80,12 +80,12 @@ def _nice_intervals(data, nlevs):
     else:
         mnlvl = mn
         mxlvl = mx
-    
+
     # hack to make generated intervals from mpl the same for all versions
     autolimit_mode = mpl.rcParams.get('axes.autolimit_mode')
     if autolimit_mode:
         mpl.rc('axes', autolimit_mode='round_numbers')
-    
+
     locator = mpl.ticker.MaxNLocator(nlevs)
     clevs = locator.tick_values(mnlvl, mxlvl)
     if autolimit_mode:
@@ -122,14 +122,14 @@ def _best_grid_shape(nplots, oldshape):
         # rows and columns for gridshape, automatically
         # correct it so that it fits only as many plots
         # as needed
-        while diff >= ncols:
-            nrows -= 1
+        while diff >= nrows:
+            ncols -= 1
             size = nrows * ncols
             diff = size - nplots
 
         # Don't forget to remove unnecessary columns too
-        if nrows == 1:
-            ncols = nplots
+        if ncols == 1:
+            nrows = nplots
 
         newshape = nrows, ncols
         return newshape
@@ -167,7 +167,7 @@ def _fig_size(gridshape, aspect=None):
 
 def draw_taylor_diagram(results, names, refname, fname, fmt='png',
                         gridshape=(1, 1), ptitle='', subtitles=None,
-                        pos='upper right', frameon=True, radmax=1.5):
+                        pos='upper right', frameon=True, radmax=1.5, legend_size=13):
     ''' Draw a Taylor diagram.
 
     :param results: An Nx2 array containing normalized standard deviations,
@@ -209,6 +209,9 @@ def draw_taylor_diagram(results, names, refname, fname, fmt='png',
     :param radmax: (Optional) float to adjust the extent of the axes in terms of
         standard deviation.
     :type radmax: :class:`float`
+
+    :param legend_size: (Optional) float to control the font size of the legend        
+    :type legend_size: :class:`float`
     '''
     # Handle the single plot case.
     if results.ndim == 2:
@@ -239,7 +242,7 @@ def draw_taylor_diagram(results, names, refname, fname, fmt='png',
     # Add legend
     legend = fig.legend(dia.samplePoints,
                         [p.get_label() for p in dia.samplePoints],
-                        handlelength=0., prop={'size': 10}, numpoints=1,
+                        handlelength=0., prop={'size': legend_size}, numpoints=1,
                         loc=pos)
     legend.draw_frame(frameon)
     plt.subplots_adjust(wspace=0)
@@ -367,9 +370,24 @@ def draw_subregions(subregions, lats, lons, fname, fmt='png', ptitle='',
     fig.clf()
 
 
+def _get_colors(num_colors):
+    """
+    matplotlib will recycle colors after a certain number.  This can make
+    line type charts confusing as colors will be reused.  This function
+    provides a distribution of colors across the default color map
+    to better approximate uniqueness.
+
+    :param num_colors: The number of unique colors to generate.
+    :return: A color map with num_colors.
+    """
+    cmap = plt.get_cmap()
+    return [cmap(1. * i / num_colors) for i in range(num_colors)]
+
+
 def draw_time_series(results, times, labels, fname, fmt='png', gridshape=(1, 1),
                      xlabel='', ylabel='', ptitle='', subtitles=None,
-                     label_month=False, yscale='linear', aspect=None):
+                     label_month=False, yscale='linear', aspect=None,
+                     cycle_colors=True, cmap=None):
     ''' Draw a time series plot.
 
     :param results: 3D array of time series data.
@@ -415,7 +433,22 @@ def draw_time_series(results, times, labels, fname, fmt='png', gridshape=(1, 1),
     :param aspect: (Optional) approximate aspect ratio of each subplot
         (width / height). Default is 8.5 / 5.5
     :type aspect: :class:`float`
+
+    :param cycle_colors: (Optional) flag to toggle whether to allow matlibplot
+        to re-use colors when plotting or force an evenly distributed range.
+    :type cycle_colors: :class:`bool`
+
+    :param cmap: (Optional) string or :class:`matplotlib.colors.LinearSegmentedColormap`
+        instance denoting the colormap. This must be able to be recognized by
+        `Matplotlib's get_cmap function <http://matplotlib.org/api/cm_api.html#matplotlib.cm.get_cmap>`_.
+        Maps like rainbow and spectral with wide spectrum of colors are nice choices when used with
+        the cycle_colors option. tab20, tab20b, and tab20c are good if the plot has less than 20 datasets.
+    :type cmap: :mod:`string` or :class:`matplotlib.colors.LinearSegmentedColormap`
+
     '''
+    if cmap is not None:
+        set_cmap(cmap)
+
     # Handle the single plot case.
     if results.ndim == 2:
         results = results.reshape(1, *results.shape)
@@ -448,6 +481,10 @@ def draw_time_series(results, times, labels, fname, fmt='png', gridshape=(1, 1),
     # Make the plots
     for i, ax in enumerate(grid):
         data = results[i]
+
+        if not cycle_colors:
+            ax.set_prop_cycle('color', _get_colors(data.shape[0]))
+
         if label_month:
             xfmt = mpl.dates.DateFormatter('%b')
             xloc = mpl.dates.MonthLocator()
@@ -565,14 +602,23 @@ def draw_barchart(results, yvalues, fname, ptitle='', fmt='png',
 
 
 def draw_marker_on_map(lat, lon, fname, fmt='png', location_name=' ', gridshape=(1, 1)):
-    '''
-    Purpose::
-        Draw a marker on a map
+    '''Draw a marker on a map.
 
-    Input::
-        lat - latitude for plotting a marker
-        lon - longitude for plotting a marker
-        fname  - a string specifying the filename of the plot
+    :param lat: Latitude for plotting a marker.
+    :type lat: :class:`float`
+
+    :param lon: Longitude for plotting a marker.
+    :type lon: :class:`float`
+
+    :param fname: The filename of the plot.
+    :type fname: :class:`string`
+
+    :param fmt: (Optional) Filetype for the output.
+    :type fmt: :class:`string`
+
+    :param location_name: (Optional) A label for the map marker.
+    :type location_name: :class:`string`
+
     '''
     fig = plt.figure()
     fig.dpi = 300
@@ -1063,14 +1109,22 @@ class TaylorDiagram(object):
 
 def draw_histogram(dataset_array, data_names, fname, fmt='png', nbins=10):
     '''
-    Purpose::
-        Draw histograms
+    Purpose:: Draw a histogram for the input dataset.
 
-    Input::
-        dataset_array - a list of data values [data1, data2, ....]
-        data_names    - a list of data names  ['name1','name2',....]
-        fname  - a string specifying the filename of the plot
-        bins - number of bins
+    :param dataset_array: A list of data values [data1, data2, ....].
+    :type dataset_array: :class:`list` of :class:`float`
+
+    :param data_names: A list of data names  ['name1','name2',....].
+    :type data_names: :class:`list` of :class:`string`
+
+    :param fname: The filename of the plot.
+    :type fname: :class:`string`
+
+    :param fmt: (Optional) Filetype for the output.
+    :type fmt: :class:`string`
+
+    :param bins: (Optional) Number of bins.
+    :type bins: :class:`integer`
     '''
     fig = plt.figure()
     fig.dpi = 300
@@ -1096,24 +1150,24 @@ def draw_histogram(dataset_array, data_names, fname, fmt='png', nbins=10):
 
 def fill_US_states_with_color(regions, fname, fmt='png', ptitle='',
                               colors=False, values=None, region_names=None):
-    
-    ''' Fill the States over the contiguous US with colors 
-   
-    :param regions: The list of subregions(lists of US States) to be filled 
+
+    ''' Fill the States over the contiguous US with colors
+
+    :param regions: The list of subregions(lists of US States) to be filled
                     with different colors.
-    :type regions: :class:`list`  
+    :type regions: :class:`list`
     :param fname: The filename of the plot.
     :type fname: :mod:`string`
     :param fmt: (Optional) filetype for the output.
     :type fmt: :mod:`string`
     :param ptitle: (Optional) plot title.
     :type ptitle: :mod:`string`
-    :param colors: (Optional) : If True, each region will be filled  
+    :param colors: (Optional) : If True, each region will be filled
                                 with different colors without using values
-    :type colors: :class:`bool` 
-    :param values: (Optional) : If colors==False, color for each region scales 
-                                an associated element in values   
-    :type values: :class:`numpy.ndarray` 
+    :type colors: :class:`bool`
+    :param values: (Optional) : If colors==False, color for each region scales
+                                an associated element in values
+    :type values: :class:`numpy.ndarray`
     '''
 
     nregion = len(regions)
@@ -1140,7 +1194,7 @@ def fill_US_states_with_color(regions, fname, fmt='png', ptitle='',
         lons=np.empty(0)
         for shape in shapes:
             patches.append(Polygon(np.array(shape), True))
-            
+
             lons = np.append(lons, shape[:,0])
             lats = np.append(lats, shape[:,1])
         if colors:
@@ -1164,13 +1218,13 @@ def draw_plot_to_compare_trends(obs_data, ens_data, model_data,
                           fname, fmt='png', ptitle='', data_labels=None,
                           xlabel='', ylabel=''):
 
-    ''' Fill the States over the contiguous US with colors 
-   
+    ''' Fill the States over the contiguous US with colors
+
     :param obs_data: An array of observed trend and standard errors for regions
     :type obs_data: :class:'numpy.ndarray'
-    :param ens_data: An array of trend and standard errors from a multi-model ensemble for regions 
+    :param ens_data: An array of trend and standard errors from a multi-model ensemble for regions
     :type ens_data: : class:'numpy.ndarray'
-    :param model_data: An array of trends from models for regions 
+    :param model_data: An array of trends from models for regions
     :type model_data: : class:'numpy.ndarray'
     :param fname: The filename of the plot.
     :type fname: :mod:`string`
@@ -1182,36 +1236,36 @@ def draw_plot_to_compare_trends(obs_data, ens_data, model_data,
     :type data_labels: :mod:`list`
     :param xlabel: (Optional) a label for x-axis
     :type xlabel: :mod:`string`
-    :param ylabel: (Optional) a label for y-axis  
+    :param ylabel: (Optional) a label for y-axis
     :type ylabel: :mod:`string`
     '''
-    nregions = obs_data.shape[1] 
+    nregions = obs_data.shape[1]
 
     # Set up the figure
     fig = plt.figure()
     fig.set_size_inches((8.5, 11.))
     fig.dpi = 300
     ax = fig.add_subplot(111)
-  
-    b_plot = ax.boxplot(model_data, widths=np.repeat(0.2, nregions), positions=np.arange(nregions)+1.3) 
+
+    b_plot = ax.boxplot(model_data, widths=np.repeat(0.2, nregions), positions=np.arange(nregions)+1.3)
     plt.setp(b_plot['medians'], color='black')
     plt.setp(b_plot['whiskers'], color='black')
     plt.setp(b_plot['boxes'], color='black')
     plt.setp(b_plot['fliers'], color='black')
-    ax.errorbar(np.arange(nregions)+0.8, obs_data[0,:], yerr=obs_data[1,:], 
-                fmt='o', color='r', ecolor='r')    
-    ax.errorbar(np.arange(nregions)+1., ens_data[0,:], yerr=ens_data[1,:], 
-                fmt='o', color='b', ecolor='b')    
+    ax.errorbar(np.arange(nregions)+0.8, obs_data[0,:], yerr=obs_data[1,:],
+                fmt='o', color='r', ecolor='r')
+    ax.errorbar(np.arange(nregions)+1., ens_data[0,:], yerr=ens_data[1,:],
+                fmt='o', color='b', ecolor='b')
     ax.set_xticks(np.arange(nregions)+1)
     ax.set_xlim([0, nregions+1])
-    
+
     if data_labels:
         ax.set_xticklabels(data_labels)
-    fig.savefig('%s.%s' % (fname, fmt), bbox_inches='tight') 
+    fig.savefig('%s.%s' % (fname, fmt), bbox_inches='tight')
 
-def draw_precipitation_JPDF (plot_data, plot_level, x_ticks, x_names,y_ticks,y_names, 
-               output_file, title=None, diff_plot=False, cmap = cm.BrBG, 
-               cbar_ticks=[0.01, 0.10, 0.5, 2, 5, 25], 
+def draw_precipitation_JPDF (plot_data, plot_level, x_ticks, x_names,y_ticks,y_names,
+               output_file, title=None, diff_plot=False, cmap = cm.BrBG,
+               cbar_ticks=[0.01, 0.10, 0.5, 2, 5, 25],
                cbar_label=['0.01', '0.10', '0.5', '2', '5', '25']):
     '''
     :param plot_data: a numpy array of data to plot (dimY, dimX)
@@ -1219,11 +1273,11 @@ def draw_precipitation_JPDF (plot_data, plot_level, x_ticks, x_names,y_ticks,y_n
     :param plot_level: levels to plot
     :type plot_level: :class:'numpy.ndarray'
     :param x_ticks: x values where tick makrs are located
-    :type x_ticks: :class:'numpy.ndarray'                 
+    :type x_ticks: :class:'numpy.ndarray'
     :param x_names: labels for the ticks on x-axis (dimX)
     :type x_names: :class:'list'
     :param y_ticks: y values where tick makrs are located
-    :type y_ticks: :class:'numpy.ndarray'                 
+    :type y_ticks: :class:'numpy.ndarray'
     :param y_names: labels for the ticks on y-axis (dimY)
     :type y_names: :class:'list'
     :param output_file: name of output png file
@@ -1246,7 +1300,7 @@ def draw_precipitation_JPDF (plot_data, plot_level, x_ticks, x_names,y_ticks,y_n
     dimY, dimX = plot_data.shape
     plot_data2 = np.zeros([dimY,dimX]) # sectioned array for plotting
 
-    # fontsize 
+    # fontsize
     rcParams['axes.labelsize'] = 8
     rcParams['xtick.labelsize'] = 8
     rcParams['ytick.labelsize'] = 8

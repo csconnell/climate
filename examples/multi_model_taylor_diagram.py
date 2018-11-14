@@ -1,5 +1,62 @@
-# Apache OCW lib immports
-from ocw.dataset import Dataset, Bounds
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+"""
+    multi_model_taylor_diagram.py
+
+    Use OCW to download, normalize and evaluate three datasets
+    against a reference dataset and OCW standard metrics
+    drawing a Taylor diagram of the results of the evaluation.
+
+    In this example:
+
+    1. Download three netCDF files from a local site.
+        AFRICA_KNMI-RACMO2.2b_CTL_ERAINT_MM_50km_1989-2008_pr.nc
+        AFRICA_ICTP-REGCM3_CTL_ERAINT_MM_50km-rg_1989-2008_pr.nc
+        AFRICA_UCT-PRECIS_CTL_ERAINT_MM_50km_1989-2008_pr.nc
+    2. Load the local files into OCW dataset objects.
+    3. Process each dataset to the same same shape.
+        a.) Restrict the datasets re: geographic and time boundaries.
+        b.) Temporally rebin the data (monthly).
+        c.) Spatially regrid each dataset.
+    4.  Extract the metrics used for the evaluation and evaluate
+        against a reference dataset and standard OCW metrics.
+    5.  Draw evaluation results Taylor diagram.
+
+    OCW modules demonstrated:
+
+    1. datasource/local
+    2. dataset
+    3. dataset_processor
+    4. evaluation
+    5. metrics
+    6. plotter
+    7. utils
+
+"""
+from __future__ import print_function
+
+import datetime
+import ssl
+import sys
+from os import path
+
+import numpy as np
+
 import ocw.data_source.local as local
 import ocw.data_source.rcmed as rcmed
 import ocw.dataset_processor as dsp
@@ -7,16 +64,18 @@ import ocw.evaluation as evaluation
 import ocw.metrics as metrics
 import ocw.plotter as plotter
 import ocw.utils as utils
+from ocw.dataset import Bounds
 
-import datetime
-import numpy as np
-import urllib
+if sys.version_info[0] >= 3:
+    from urllib.request import urlretrieve
+else:
+    # Not Python 3 - today, it is most likely to be Python 2
+    # But note that this might need an update when Python 4
+    # might be around one day
+    from urllib import urlretrieve
 
-from os import path
-import ssl
 if hasattr(ssl, '_create_unverified_context'):
     ssl._create_default_https_context = ssl._create_unverified_context
-
 
 # File URL leader
 FILE_LEADER = "http://zipper.jpl.nasa.gov/dist/"
@@ -32,7 +91,7 @@ LAT_MIN = -45.0
 LAT_MAX = 42.24
 LON_MIN = -24.0
 LON_MAX = 60.0
-START = datetime.datetime(2000, 01, 1)
+START = datetime.datetime(2000, 1, 1)
 END = datetime.datetime(2007, 12, 31)
 EVAL_BOUNDS = Bounds(lat_min=LAT_MIN, lat_max=LAT_MAX,
                      lon_min=LON_MIN, lon_max=LON_MAX, start=START, end=END)
@@ -50,35 +109,29 @@ target_datasets = []
 ref_datasets = []
 
 # Download necessary NetCDF file if not present
-if path.exists(FILE_1):
-    pass
-else:
-    urllib.urlretrieve(FILE_LEADER + FILE_1, FILE_1)
+if not path.exists(FILE_1):
+    urlretrieve(FILE_LEADER + FILE_1, FILE_1)
 
-if path.exists(FILE_2):
-    pass
-else:
-    urllib.urlretrieve(FILE_LEADER + FILE_2, FILE_2)
+if not path.exists(FILE_2):
+    urlretrieve(FILE_LEADER + FILE_2, FILE_2)
 
-if path.exists(FILE_3):
-    pass
-else:
-    urllib.urlretrieve(FILE_LEADER + FILE_3, FILE_3)
+if not path.exists(FILE_3):
+    urlretrieve(FILE_LEADER + FILE_3, FILE_3)
 
-""" Step 1: Load Local NetCDF File into OCW Dataset Objects and store in list"""
+# Step 1: Load Local NetCDF File into OCW Dataset Objects and store in list.
 target_datasets.append(local.load_file(FILE_1, varName, name="KNMI"))
 target_datasets.append(local.load_file(FILE_2, varName, name="REGM3"))
 target_datasets.append(local.load_file(FILE_3, varName, name="UCT"))
 
 
-""" Step 2: Fetch an OCW Dataset Object from the data_source.rcmed module """
+# Step 2: Fetch an OCW Dataset Object from the data_source.rcmed module.
 print("Working with the rcmed interface to get CRU3.1 Monthly Mean Precipitation")
 # the dataset_id and the parameter id were determined from
 # https://rcmes.jpl.nasa.gov/content/data-rcmes-database
 CRU31 = rcmed.parameter_dataset(
     10, 37, LAT_MIN, LAT_MAX, LON_MIN, LON_MAX, START, END)
 
-""" Step 3: Resample Datasets so they are the same shape """
+# Step 3: Resample Datasets so they are the same shape.
 print("Resampling datasets ...")
 print("... on units")
 CRU31 = dsp.water_flux_unit_conversion(CRU31)
@@ -86,10 +139,10 @@ print("... temporal")
 CRU31 = dsp.temporal_rebin(CRU31, temporal_resolution='monthly')
 
 for member, each_target_dataset in enumerate(target_datasets):
-    target_datasets[member] = dsp.water_flux_unit_conversion(target_datasets[
-                                                             member])
-    target_datasets[member] = dsp.temporal_rebin(
-        target_datasets[member], temporal_resolution='monthly')
+    target_datasets[member] =\
+        dsp.water_flux_unit_conversion(target_datasets[member])
+    target_datasets[member] =\
+        dsp.temporal_rebin(target_datasets[member], temporal_resolution='monthly')
     target_datasets[member] = dsp.subset(target_datasets[member], EVAL_BOUNDS)
 
 # Regrid
@@ -115,8 +168,8 @@ target_datasets_ensemble.name = "ENS"
 target_datasets.append(target_datasets_ensemble)
 
 for member, each_target_dataset in enumerate(target_datasets):
-    target_datasets[member].values = utils.calc_temporal_mean(target_datasets[
-                                                              member])
+    target_datasets[member].values =\
+        utils.calc_temporal_mean(target_datasets[member])
 
 allNames = []
 
@@ -134,7 +187,7 @@ RCMs_to_CRU_evaluation = evaluation.Evaluation(CRU31,  # Reference dataset for t
                                                target_datasets,
                                                # 1 or more metrics to use in
                                                # the evaluation
-                                               [taylor_diagram])  # , mean_bias,spatial_std_dev_ratio, pattern_correlation])
+                                               [taylor_diagram])
 RCMs_to_CRU_evaluation.run()
 
 taylor_data = RCMs_to_CRU_evaluation.results[0]

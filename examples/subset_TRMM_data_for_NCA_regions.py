@@ -15,17 +15,40 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# Apache OCW lib immports
-import ocw.dataset_processor as dsp
-import ocw.utils as utils
-from ocw.dataset import Bounds
-import ocw.data_source.rcmed as rcmed
-import ocw.plotter as plotter
+"""
+    subset_TRMM_data_for_NCA_regions.py
 
-from datetime import datetime
-import numpy.ma as ma
+    Use OCW to subset TRMM data (https://pmm.nasa.gov/trmm) for NCA regions and draw
+    a contour map for the U.S. (CA', 'NV', 'UT', 'AZ', 'NM', 'CO'), Cuba and
+    the Bahamas (https://scenarios.globalchange.gov/regions_nca4).
+
+    In this example:
+
+    1. Interface with the Regional Climate Model Evaluation Database (https://rcmes.jpl.nasa.gov/)
+       to load the TRMM dataset.
+    2. Define the bounds for the U.S. (CA', 'NV', 'UT', 'AZ', 'NM', 'CO'), Cuba and the Bahamas and
+       the start date / end date.
+    3. Create a contour map of the TRMM data for the U.S., Cuba, and Bahamas.
+
+    OCW modules demonstrated:
+
+    1. datasource/rcmed
+    2. dataset (Bounds)
+    3. dataset_processor
+    4. plotter
+
+"""
+from __future__ import print_function
 
 import ssl
+from datetime import datetime
+
+import numpy.ma as ma
+
+import ocw.data_source.rcmed as rcmed
+import ocw.dataset_processor as dsp
+import ocw.plotter as plotter
+from ocw.dataset import Bounds
 
 if hasattr(ssl, '_create_unverified_context'):
     ssl._create_default_https_context = ssl._create_unverified_context
@@ -51,8 +74,8 @@ TRMM_dataset2 = dsp.subset(
 plotter.draw_contour_map(ma.mean(TRMM_dataset2.values, axis=0), TRMM_dataset2.lats,
                          TRMM_dataset2.lons, fname='TRMM_without_Cuba_and_Bahamas')
 
-NCA_SW_bounds = Bounds(boundary_type='us_states', us_states=[
-                       'CA', 'NV', 'UT', 'AZ', 'NM', 'CO'])
+NCA_SW_bounds = \
+    Bounds(boundary_type='us_states', us_states=['CA', 'NV', 'UT', 'AZ', 'NM', 'CO'])
 # to mask out the data over Mexico and Canada
 TRMM_dataset3 = dsp.subset(TRMM_dataset2, NCA_SW_bounds, extract=True)
 

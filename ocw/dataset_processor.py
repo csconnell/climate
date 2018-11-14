@@ -15,20 +15,19 @@
 #  limitations under the License.
 #
 
-from ocw import dataset as ds
-import ocw.utils as utils
-
 import datetime
+import logging
+
+import netCDF4
 import numpy as np
 import numpy.ma as ma
-from scipy.interpolate import griddata
 import scipy.ndimage
-from scipy.stats import rankdata
-from scipy.ndimage import map_coordinates
-import netCDF4
 from matplotlib.path import Path
+from scipy.interpolate import griddata
+from scipy.ndimage import map_coordinates
 
-import logging
+import ocw.utils as utils
+from ocw import dataset as ds
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +74,18 @@ def temporal_subset(target_dataset, month_start, month_end,
                              name=target_dataset.name)
 
     if average_each_year:
+        new_times = new_dataset.times
         nmonth = len(month_index)
-        ntime = new_dataset.times.size
+        ntime = new_times.size
         nyear = ntime // nmonth
         if ntime % nmonth != 0:
-            raise ValueError("Number of times in dataset ({}) does not "
-                             "divide evenly into {} year(s)."
-                             .format(ntime, nyear))
+            logger.warning("Number of times in dataset ({}) does not "
+                           "divide evenly into {} year(s). Trimming data..."
+                           .format(ntime, nyear))
+            slc = utils.trim_dataset(new_dataset)
+            new_dataset.values = new_dataset.values[slc]
+            new_times = new_times[slc]
+            nyear = new_times.size // nmonth
 
         averaged_time = []
         ny, nx = target_dataset.values.shape[1:]
@@ -92,7 +96,7 @@ def temporal_subset(target_dataset, month_start, month_end,
             center_index = int(nmonth / 2 + iyear * nmonth)
             if nmonth == 1:
                 center_index = iyear
-            averaged_time.append(new_dataset.times[center_index])
+            averaged_time.append(new_times[center_index])
             averaged_values[iyear, :] = ma.average(new_dataset.values[
                 nmonth * iyear: nmonth * iyear + nmonth, :], axis=0)
         new_dataset = ds.Dataset(target_dataset.lats,
@@ -144,7 +148,7 @@ def temporal_rebin_with_time_index(target_dataset, nt_average):
      It is the same as the number of time indicies to be averaged.
      length of time dimension in the rebinned dataset) =
      (original time dimension length/nt_average)
-    :type temporal_resolution: integer
+    :type nt_average: integer
 
     :returns: A new temporally rebinned Dataset
     :rtype: :class:`dataset.Dataset`
@@ -253,7 +257,7 @@ def spatial_regrid(target_dataset, new_latitudes, new_longitudes,
             if path.contains_point([new_lons[iy, ix],
                                     new_lats[iy, ix]]) or not boundary_check:
                new_xy_mask[iy, ix] = 0.
-            
+
     new_index = np.where(new_xy_mask == 0.)
     # Regrid the data on each time slice
     for i in range(len(target_dataset.times)):
@@ -286,7 +290,7 @@ def spatial_regrid(target_dataset, new_latitudes, new_longitudes,
         values_false_indices = np.where(values_original.mask == False)
         qmdi[values_true_indices] = 1.
         qmdi[values_false_indices] = 0.
-        qmdi_r = griddata((lons.flatten(), lats.flatten()), qmdi.flatten(), 
+        qmdi_r = griddata((lons.flatten(), lats.flatten()), qmdi.flatten(),
                              (new_lons[new_index],
                               new_lats[new_index]),
                               method='nearest')
@@ -375,7 +379,7 @@ def subset(target_dataset, subregion, subregion_name=None, extract=True, user_ma
     if not subregion_name:
         subregion_name = target_dataset.name
 
-    if hasattr(subregion, 'lat_min'):
+    if subregion.lat_min is not None:
         _are_bounds_contained_by_dataset(target_dataset, subregion)
 
         if target_dataset.lats.ndim == 2 and target_dataset.lons.ndim == 2:
@@ -500,10 +504,32 @@ def temporal_slice(target_dataset, start_time, end_time):
 
     :raises: ValueError
     '''
+
+    # https://issues.apache.org/jira/browse/CLIMATE-938
+    # netCDF datetimes allow for a variety of calendars while Python has
+    # only one.  This would throw an error about a calendar mismatch when
+    # comparing a Python datetime object to a netcdf datetime object.
+    # Cast the date as best we can so the comparison will compare like
+    # data types  This will still throw an excdeption if the start / end date are
+    # not valid in given calendar.  February 29th in a DatetimeNoLeap calendar for example.
+    slice_start_time = start_time
+    slice_end_time = end_time
+
+    if type(target_dataset.times[0]) != datetime.datetime:
+        slice_start_time =\
+            type(target_dataset.times.item(0))(start_time.year, start_time.month, start_time.day,
+                                            start_time.hour, start_time.minute, start_time.second)
+
+        slice_end_time =\
+            type(target_dataset.times.item(0))(end_time.year, end_time.month, end_time.day,
+                                            end_time.hour, end_time.minute, end_time.second)
+
     start_time_index = np.where(
-        target_dataset.times >= start_time)[0][0]
+        target_dataset.times >= slice_start_time)[0][0]
+
     end_time_index = np.where(
-        target_dataset.times <= end_time)[0][-1]
+        target_dataset.times <= slice_end_time)[0][-1]
+
     new_times = target_dataset.times[start_time_index:end_time_index + 1]
     new_values = target_dataset.values[start_time_index:end_time_index + 1, :]
 
@@ -605,31 +631,31 @@ def write_netcdf(dataset, path, compress=True):
     if dataset.lats.ndim == 2:
         lat_len = dataset.lats.shape[0]
         lon_len = dataset.lons.shape[1]
-        lat_dim_info = ('lat', 'lon')
-        lon_dim_info = ('lat', 'lon')
+        lat_dim_info = ('y', 'x')
+        lon_dim_info = ('y', 'x')
 
     else:
         lat_len = len(dataset.lats)
         lon_len = len(dataset.lons)
-        lat_dim_info = ('lat',)
-        lon_dim_info = ('lon',)
+        lat_dim_info = ('y',)
+        lon_dim_info = ('x',)
 
     time_len = len(dataset.times)
 
     # Create attribute dimensions
-    out_file.createDimension('lat', lat_len)
-    out_file.createDimension('lon', lon_len)
-    out_file.createDimension('time', time_len)
+    out_file.createDimension('y', lat_len)
+    out_file.createDimension('x', lon_len)
+    out_file.createDimension('time', None)
 
     # Create variables
     lats = out_file.createVariable('lat', 'f8', lat_dim_info, zlib=compress)
     lons = out_file.createVariable('lon', 'f8', lon_dim_info, zlib=compress)
-    times = out_file.createVariable('time', 'f8', ('time',), zlib=compress)
+    times = out_file.createVariable('time', 'f8', ('time'), zlib=compress)
 
     var_name = dataset.variable if dataset.variable else 'var'
     values = out_file.createVariable(var_name,
                                      'f8',
-                                     ('time', 'lat', 'lon'),
+                                     ('time', 'y', 'x'),
                                      zlib=compress)
 
     # Set the time variable units
@@ -862,9 +888,13 @@ def mask_missing_data(dataset_array):
 
     mask_array = np.zeros(dataset_array[0].values.shape)
     for dataset in dataset_array:
-        index = np.where(dataset.values.mask == True)
-        if index[0].size > 0:
-            mask_array[index] = 1
+        # CLIMATE-797 - Not every array passed in will be a masked array.
+        # For those that are, action based on the mask passed in.
+        # For those that are not, take no action (else AttributeError).
+        if hasattr(dataset.values, 'mask'):
+            index = np.where(dataset.values.mask == True)
+            if index[0].size > 0:
+                mask_array[index] = 1
     masked_array = []
     for dataset in dataset_array:
         dataset.values = ma.array(dataset.values, mask=mask_array)
@@ -879,7 +909,7 @@ def deseasonalize_dataset(dataset):
     :param dataset: The dataset to convert.
     :type dataset: :class:`dataset.Dataset`
 
-    :returns: A Dataset with values converted to new units.
+    :returns: A Dataset with values deseasonalized.
     :rtype: :class:`dataset.Dataset`
     '''
 
@@ -1441,7 +1471,7 @@ def _are_bounds_contained_by_dataset(dataset, bounds):
     '''
     lat_min, lat_max, lon_min, lon_max = dataset.spatial_boundaries()
     start, end = dataset.temporal_boundaries()
-    
+
     errors = []
 
     # TODO:  THIS IS TERRIBLY inefficent and we need to use a geometry

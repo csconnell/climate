@@ -1,3 +1,4 @@
+cython
 numpy
 scipy
 matplotlib
@@ -5,10 +6,13 @@ basemap
 netcdf4
 h5py
 bottle
-pydap
+Pydap
+lxml
 python-dateutil
 mock
 webtest
 myproxyclient
 esgf-pyclient
 podaacpy
+networkx
+netcdftime

@@ -38,7 +38,7 @@ _classifiers = [
 ]
 _description = 'Apache Open Climate Workbench'
 _download_url = 'http://pypi.python.org/pypi/ocw/'
-_requirements = []
+_requirements = ['numpy', ]
 _keywords = ['climate analysis', 'workbench', 'rebinning',
              'metrics', 'computation', 'visualization']
 _license = 'Apache License, Version 2.0'
@@ -47,7 +47,7 @@ _name = 'ocw'
 _namespaces = []
 _test_suite = 'ocw.tests'
 _url = 'http://climate.apache.org/'
-_version = '1.2.0'
+_version = '1.3.0'
 _zip_safe = False
 
 # Setup Metadata
@@ -61,7 +61,7 @@ try:
         to='rst',
         outputfile='README.rst')
 except(IOError, ImportError):
-    _long_description = open('README.md').read()
+    _long_description = open('README.rst').read()
 
 open('doc.txt', 'w').write(_long_description)
 

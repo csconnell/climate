@@ -15,6 +15,28 @@
 # specific language governing permissions and limitations
 # under the License.
 
+"""
+    podaac_integration_example.py
+
+    Use OCW to download a PODACC dataset, evaluate and plot (contour map).
+
+    In this example:
+
+    1. Download a remote PO.DAAC (https://podaac.jpl.nasa.gov/) dataset
+       and read it into an OCW dataset object.
+    2. Create a temporal STD metric using one of the OCW standard metrics.
+    3. Evaluate the dataset against the metric and plot a contour map.
+
+    OCW modules demonstrated:
+
+    1. datasource/podaac_datasource
+    2. metrics
+    3. evaluation
+    4. plotter
+
+"""
+from __future__ import print_function
+
 import ocw.data_source.podaac_datasource as podaac
 import ocw.evaluation as evaluation
 import ocw.metrics as metrics
@@ -24,9 +46,10 @@ datasetId = 'PODAAC-CCF30-01XXX'
 variable = 'uwnd'
 name = 'PO.DAAC_test_dataset'
 OUTPUT_PLOT = "ccmp_temporal_std"
-""" Step 1: Download remote PO.DAAC Dataset and read it into an OCW Dataset Object"""
+# Step 1: Download remote PO.DAAC Dataset and read it into an OCW Dataset Object.
 print("Available Level4 PO.DAAC Granules: %s" % podaac.list_available_extract_granule_dataset_ids())
-print("Extracting variable '%s' from  Level4 granule '%s' and converting it into a OCW dataset object." % (variable, datasetId))
+print("Extracting variable '%s' from  Level4 granule '%s' and converting it into a OCW dataset."
+      % (variable, datasetId))
 ccmp_dataset = podaac.extract_l4_granule(
     variable=variable, dataset_id=datasetId, name=name)
 print("CCMP_Dataset.values shape: (times, lats, lons) - %s \n" %
@@ -36,12 +59,12 @@ print("CCMP_Dataset.values shape: (times, lats, lons) - %s \n" %
 lats = ccmp_dataset.lats
 lons = ccmp_dataset.lons
 
-""" Step 2:  Build a Metric to use for Evaluation - Temporal STD for this example """
+# Step 2:  Build a Metric to use for Evaluation - Temporal STD for this example.
 # You can build your own metrics, but OCW also ships with some common metrics
 print("Setting up a Temporal STD metric to use for evaluation")
 std = metrics.TemporalStdDev()
 
-""" Step 3: Create an Evaluation Object using Datasets and our Metric """
+# Step 3: Create an Evaluation Object using Datasets and our Metric.
 # The Evaluation Class Signature is:
 # Evaluation(reference, targets, metrics, subregions=None)
 # Evaluation can take in multiple targets and metrics, so we need to convert
@@ -53,7 +76,7 @@ std_evaluation = evaluation.Evaluation(None, [ccmp_dataset], [std])
 print("Executing the Evaluation using the object's run() method")
 std_evaluation.run()
 
-""" Step 4: Make a Plot from the Evaluation.results """
+# Step 4: Make a Plot from the Evaluation.results.
 # The Evaluation.results are a set of nested lists to support many different
 # possible Evaluation scenarios.
 #
